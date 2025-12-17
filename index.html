@@ -1,0 +1,241 @@
+<meta name="color-scheme" content="light dark">
+<div class="topbar">
+  <div class="title">
+    <div class="h1">XAU Signal Tool</div>
+    <div id="jsok" class="ok">JS: loading…</div>
+  </div>
+
+  <div class="tabs">
+    <button id="tabTrade" class="tab active" onclick="showPage('trade')">Trade</button>
+    <button id="tabSettings" class="tab" onclick="showPage('settings')">Settings</button>
+  </div>
+</div>
+
+<!-- TRADE PAGE -->
+<div id="pageTrade" class="page">
+
+  <label>Display mode</label>
+  <div class="modeToggle card">
+    <button id="modeRiskBtn" class="modeBtn active" onclick="setMode('risk')">Risk</button>
+    <button id="modeMarginBtn" class="modeBtn" onclick="setMode('margin')">Margin</button>
+    <div class="muted span2" style="margin-top:8px;">
+      This changes the TOTAL lots shown (main order) and the $ numbers to match the selected mode.
+    </div>
+  </div>
+
+  <label>Account type</label>
+  <div class="card">
+    <label class="inlineRow">
+      <input type="checkbox" id="nettingMode" onclick="onNettingToggle()" />
+      Netting account (uFunded): 1 net position + partial closes via opposite LIMIT orders
+    </label>
+    <div class="muted" style="margin-top:6px;">
+      Netting mode: open 1 main position (TOTAL lot) with SL + final TP, then place opposite LIMIT orders (SLICE lots) at earlier TPs.
+    </div>
+  </div>
+
+  <label>Signal</label>
+  <div class="btns">
+    <button onclick="pasteSignal()">Paste</button>
+    <button onclick="clearSignal()">Clear signal</button>
+  </div>
+  <textarea id="signal" placeholder="Paste Telegram signal here..."></textarea>
+
+  <div class="row">
+    <div>
+      <label>Account size</label>
+      <input id="acct" inputmode="decimal" value="45000" />
+    </div>
+    <div>
+      <label>Risk % per trade</label>
+      <input id="risk" inputmode="decimal" value="2.5" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label>Free margin ($)</label>
+      <input id="freeMargin" inputmode="decimal" placeholder="e.g. 18498" />
+    </div>
+    <div>
+      <label class="hasLink">
+        Advanced settings
+        <button class="linkBtn" onclick="showPage('settings')">Open Settings</button>
+      </label>
+      <div class="muted" style="margin-top:6px;">
+        Margin per lot, lot step, and XAU value live in Settings.
+      </div>
+    </div>
+  </div>
+
+  <div class="btns">
+    <button onclick="calculate()">Calculate</button>
+    <button onclick="clearAll()">Clear all</button>
+  </div>
+
+  <div id="messages"></div>
+
+  <!-- QUICK COPY -->
+  <label>Quick copy</label>
+  <div id="quick" class="card">
+
+    <!-- Info only -->
+    <div class="infoLine">
+      <div><b>Symbol:</b> <span id="info_symbol">-</span></div>
+      <div><b>Side:</b> <span id="info_side">-</span></div>
+    </div>
+
+    <!-- Primary order -->
+    <div class="qcBlock">
+      <div class="qcHeader">
+        <div class="qcTitle">Primary order (place first)</div>
+        <div class="qcSub">Using: <span id="info_mode">RISK</span></div>
+      </div>
+
+      <div class="qcRow">
+        <div><b>Entry</b>: <span id="qc_entry">-</span></div>
+        <button onclick="copyText('qc_entry')">Copy</button>
+      </div>
+
+      <div class="qcRow">
+        <div>
+          <b>Main lot (TOTAL)</b>: <span id="qc_lot_total">-</span>
+          <div class="muted">Slice lot (each TP): <span id="qc_lot_slice">-</span></div>
+          <div class="muted">Risk total: <span id="qc_total_risk">-</span> | Margin total: <span id="qc_total_margin">-</span></div>
+        </div>
+        <div class="btnStack">
+          <button onclick="copyText('qc_lot_total')">Copy TOTAL</button>
+          <button onclick="copyText('qc_total_risk')">Copy risk TOTAL</button>
+          <button onclick="copyText('qc_total_margin')">Copy margin TOTAL</button>
+        </div>
+      </div>
+
+      <div class="qcRow slHero">
+        <div>
+          <b>SL</b>: <span id="qc_sl">-</span>
+          <div class="muted">Max loss at SL (total): <span id="slLossTotal">-</span></div>
+        </div>
+        <div class="btnStack">
+          <button onclick="copyText('qc_sl')">Copy SL</button>
+          <button onclick="copyText('slLossTotal')">Copy SL$</button>
+        </div>
+      </div>
+
+      <div class="qcRow">
+        <div><b>Final TP</b>: <span id="qc_final_tp">-</span></div>
+        <button onclick="copyText('qc_final_tp')">Copy</button>
+      </div>
+    </div>
+
+    <!-- Opposing orders -->
+    <div class="qcBlock">
+      <div class="qcHeader">
+        <div class="qcTitle">Opposing orders (partial closes)</div>
+        <div class="qcSub">Netting mode only</div>
+      </div>
+
+      <div id="oppHint" class="muted" style="margin:8px 0;">
+        Enable Netting mode to see the opposing orders.
+      </div>
+
+      <table id="oppTable" class="hidden">
+        <thead>
+          <tr>
+            <th>Side</th>
+            <th>Entry (TP level)</th>
+            <th></th>
+            <th class="right">Lot (SLICE)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="oppBody">
+          <tr><td colspan="5" class="muted">Calculate to populate…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <label>TPs</label>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>TP</th>
+          <th>Price</th>
+          <th></th>
+          <th class="right">Lot</th>
+          <th></th>
+          <th class="right">$ Profit (this TP)</th>
+        </tr>
+      </thead>
+      <tbody id="tpBody">
+        <tr><td colspan="6" class="muted">Calculate to populate…</td></tr>
+      </tbody>
+    </table>
+    <div class="muted" style="margin-top:8px;">
+      In netting mode, TP profits use the SLICE lot (each TP closes one slice).
+    </div>
+  </div>
+
+  <label>Execution plan</label>
+  <div class="card">
+    <pre id="execPlan">Calculate to populate…</pre>
+    <div class="btns" style="margin-top:10px;">
+      <button onclick="copyExecPlan()">Copy execution plan</button>
+    </div>
+  </div>
+
+  <label>Output (copy/paste)</label>
+  <div class="btns">
+    <button onclick="copyOutput()">Copy output block</button>
+  </div>
+  <pre id="out">Paste a signal and tap Calculate.</pre>
+
+</div>
+
+<!-- SETTINGS PAGE -->
+<div id="pageSettings" class="page hidden">
+
+  <label>Settings</label>
+  <div class="card">
+    <div class="muted" style="margin-bottom:10px;">
+      Set-and-forget.
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Margin required per 1.00 lot ($) (XAUUSD)</label>
+        <input id="marginPerLot" inputmode="decimal" value="90000" />
+      </div>
+      <div>
+        <label>Lot rounding step</label>
+        <input id="step" inputmode="decimal" value="0.01" />
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>XAU value per 1.00 move per 1.00 lot</label>
+        <input id="xauValue" inputmode="decimal" value="100" />
+      </div>
+      <div>
+        <label>Default page</label>
+        <select id="defaultPage">
+          <option value="trade" selected>Trade</option>
+          <option value="settings">Settings</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="btns" style="margin-top:12px;">
+      <button onclick="saveSettingsOnly()">Save settings</button>
+      <button onclick="resetDefaults()">Reset defaults</button>
+    </div>
+  </div>
+
+  <div class="btns" style="margin-top:12px;">
+    <button onclick="showPage('trade')">Back to Trade</button>
+  </div>
+
+</div>
