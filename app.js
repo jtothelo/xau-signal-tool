@@ -537,18 +537,33 @@ document.addEventListener("DOMContentLoaded", () => {
   const defaultPage = d.defaultPage || $("defaultPage")?.value || "trade";
   showPage(defaultPage);
 
-  // 🔗 Import signal from URL (?s=...&auto=1)
-  try {
+// 🔗 Import signal from URL (?s=... or #s=...)
+// Telegram in-app browser can be flaky with querystrings, so we support both.
+try {
+  const getParam = (key) => {
+    // Querystring first
     const qs = new URLSearchParams(window.location.search);
-    const s = qs.get("s");
-    const auto = qs.get("auto");
-    if (s) {
-      $("signal").value = s;
-      if (auto === "1") setTimeout(() => calculate(), 50);
-    }
-  } catch (e) {
-    console.warn("URL import failed", e);
+    const v1 = qs.get(key);
+    if (v1) return v1;
+
+    // Then hash fragment: #s=...&auto=1
+    const h = (window.location.hash || "").replace(/^#/, "");
+    if (!h) return "";
+    const hs = new URLSearchParams(h);
+    return hs.get(key) || "";
+  };
+
+  const s = getParam("s");
+  const auto = getParam("auto");
+
+  if (s) {
+    $("signal").value = s;
+    if (auto === "1") setTimeout(() => calculate(), 80);
   }
+} catch (e) {
+  console.warn("URL import failed", e);
+}
+
 
   if (!MODE) setMode("risk");
 
