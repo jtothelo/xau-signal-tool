@@ -534,12 +534,25 @@ document.addEventListener("DOMContentLoaded", () => {
   loadAllSettings();
 
   const d = loadRawSettings();
-  const defaultPage = d?.defaultPage || $("defaultPage")?.value || "trade";
+  const defaultPage = d.defaultPage || $("defaultPage")?.value || "trade";
   showPage(defaultPage);
+
+  // 🔗 Import signal from URL (?s=...&auto=1)
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    const s = qs.get("s");
+    const auto = qs.get("auto");
+    if (s) {
+      $("signal").value = s;
+      if (auto === "1") setTimeout(() => calculate(), 50);
+    }
+  } catch (e) {
+    console.warn("URL import failed", e);
+  }
 
   if (!MODE) setMode("risk");
 
   setTimeout(() => {
-    if (!$("pageTrade").classList.contains("hidden")) $("signal")?.focus();
+    if (!($("pageTrade")?.classList.contains("hidden"))) $("signal")?.focus();
   }, 80);
 });
