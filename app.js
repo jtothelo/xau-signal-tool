@@ -4,6 +4,10 @@ const STORE_KEY = "xau_signal_tool_v4";
 let LAST = null;
 let MODE = "risk"; // "risk" or "margin"
 
+// uFunded XAUUSD margin model (Option A hard-code)
+const UFUNDED_XAU_CONTRACT_OZ = 100;
+const UFUNDED_XAU_LEVERAGE = 5;
+
 /* -------------------- Navigation -------------------- */
 function showPage(page){
   const trade = $("pageTrade");
@@ -193,7 +197,6 @@ function saveAllSettings(){
     freeMargin: $("freeMargin")?.value || "",
     nettingMode: !!$("nettingMode")?.checked,
 
-    marginPerLot: $("marginPerLot")?.value || "90000",
     step: $("step")?.value || "0.01",
     xauValue: $("xauValue")?.value || "100",
     defaultPage: $("defaultPage")?.value || "trade",
@@ -213,7 +216,6 @@ function loadAllSettings(){
   if (d.freeMargin !== undefined) $("freeMargin").value = d.freeMargin;
   if (d.nettingMode !== undefined) $("nettingMode").checked = !!d.nettingMode;
 
-  if (d.marginPerLot !== undefined) $("marginPerLot").value = d.marginPerLot;
   if (d.step !== undefined) $("step").value = d.step;
   if (d.xauValue !== undefined) $("xauValue").value = d.xauValue;
   if (d.defaultPage !== undefined) $("defaultPage").value = d.defaultPage;
@@ -227,7 +229,6 @@ function saveSettingsOnly(){
 }
 
 function resetDefaults(){
-  $("marginPerLot").value = "90000";
   $("step").value = "0.01";
   $("xauValue").value = "100";
   $("defaultPage").value = "trade";
@@ -279,7 +280,6 @@ function calculate(){
 
   const step = Number($("step").value);
   const xauValue = Number($("xauValue").value);
-  const marginPerLot = Number($("marginPerLot").value);
 
   const p = parseSignal($("signal").value);
 
@@ -295,14 +295,18 @@ function calculate(){
   if (!isFinite(step) || step <= 0) errors.push("Lot rounding step must be positive (e.g. 0.01).");
   if (!isFinite(xauValue) || xauValue <= 0) errors.push("XAU value must be positive (e.g. 100).");
 
-  if (!isFinite(marginPerLot) || marginPerLot <= 0) warnings.push("Margin per lot in Settings is missing/invalid. Margin mode will be unavailable.");
-
   if (!p.direction) warnings.push("Direction not found (BUY/SELL). Double-check manually.");
   if (!p.symbol) warnings.push("Symbol not found (e.g. XAU/USD).");
 
   if (errors.length){
     showMessages(errors, warnings);
     return;
+  }
+
+  // uFunded margin per 1.00 lot at entry price
+  const marginPerLot = (UFUNDED_XAU_CONTRACT_OZ * p.entry) / UFUNDED_XAU_LEVERAGE;
+  if (!isFinite(marginPerLot) || marginPerLot <= 0){
+    warnings.push("Could not compute margin-per-lot from entry price. Margin mode will be unavailable.");
   }
 
   const tpCount = p.tps.length;
@@ -340,7 +344,7 @@ function calculate(){
     if (!marginOk) warnings.push("Margin inputs provided, but margin-max slice rounds to 0.00. Not enough free margin.");
     else if (totalRisk > totalMargin) warnings.push(`Risk TOTAL lot (${totalRisk.toFixed(2)}) exceeds margin TOTAL lot (${totalMargin.toFixed(2)}). Orders may be rejected.`);
   } else if (freeMarginProvided) {
-    warnings.push("Free margin entered, but margin-per-lot missing/invalid in Settings. Margin mode not available.");
+    warnings.push("Free margin entered, but it is invalid or missing. Margin mode not available.");
   }
 
   LAST = {
@@ -411,8 +415,6 @@ function render(){
   $("slLossTotal").textContent = fmtMoney(-slLossTotal);
 
   // TP table:
-  // - Netting: each TP is one SLICE close (including final TP as remaining slice)
-  // - Multi: think of it as one position per TP (same as slice)
   const tpLotForTable = sliceDisplay;
 
   const tpBody = $("tpBody");
@@ -533,37 +535,33 @@ document.addEventListener("DOMContentLoaded", () => {
   $("jsok").textContent = "JS: OK";
   loadAllSettings();
 
-  const d = loadRawSettings();
+  const d = loadRawSettings() || {};
   const defaultPage = d.defaultPage || $("defaultPage")?.value || "trade";
   showPage(defaultPage);
 
-// 🔗 Import signal from URL (?s=... or #s=...)
-// Telegram in-app browser can be flaky with querystrings, so we support both.
-try {
-  const getParam = (key) => {
-    // Querystring first
-    const qs = new URLSearchParams(window.location.search);
-    const v1 = qs.get(key);
-    if (v1) return v1;
+  // 🔗 Import signal from URL (?s=... or #s=...)
+  try {
+    const getParam = (key) => {
+      const qs = new URLSearchParams(window.location.search);
+      const v1 = qs.get(key);
+      if (v1) return v1;
 
-    // Then hash fragment: #s=...&auto=1
-    const h = (window.location.hash || "").replace(/^#/, "");
-    if (!h) return "";
-    const hs = new URLSearchParams(h);
-    return hs.get(key) || "";
-  };
+      const h = (window.location.hash || "").replace(/^#/, "");
+      if (!h) return "";
+      const hs = new URLSearchParams(h);
+      return hs.get(key) || "";
+    };
 
-  const s = getParam("s");
-  const auto = getParam("auto");
+    const s = getParam("s");
+    const auto = getParam("auto");
 
-  if (s) {
-    $("signal").value = s;
-    if (auto === "1") setTimeout(() => calculate(), 80);
+    if (s) {
+      $("signal").value = s;
+      if (auto === "1") setTimeout(() => calculate(), 80);
+    }
+  } catch (e) {
+    console.warn("URL import failed", e);
   }
-} catch (e) {
-  console.warn("URL import failed", e);
-}
-
 
   if (!MODE) setMode("risk");
 
